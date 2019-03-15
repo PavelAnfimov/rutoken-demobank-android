@@ -43,7 +43,6 @@ public class LoginActivity extends Pkcs11CallerActivity {
     protected NativeLong mCertificate = TokenManagerListener.NO_CERTIFICATE;
     protected Token mToken = null;
 
-    private static final byte mSignData[] = new byte[] {0, 0, 0};
     private Dialog mOverlayDialog;
 
     public String getActivityClassIdentifier() {
@@ -72,7 +71,8 @@ public class LoginActivity extends Pkcs11CallerActivity {
 
     @Override
     protected void manageLoginSucceed() {
-        sign(mToken, mCertificate, mSignData);
+        String commonName = Utils.commonNameFromX500Name(mToken.getCertificate(TokenManagerListener.getInstance().getCertificate()).getSubject());
+        sign(mToken, mCertificate, commonName.getBytes());
     }
 
     @Override

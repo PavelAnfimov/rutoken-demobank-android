@@ -6,8 +6,12 @@
 package ru.rutoken.pkcs11caller;
 
 import com.sun.jna.Native;
+import com.sun.jna.Memory;
 import com.sun.jna.NativeLong;
+import com.sun.jna.Pointer;
 import com.sun.jna.ptr.NativeLongByReference;
+
+import org.spongycastle.asn1.x509.X509Name;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -16,6 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import ru.rutoken.demobank.TokenManagerListener;
 import ru.rutoken.pkcs11jna.CK_ATTRIBUTE;
 import ru.rutoken.pkcs11jna.CK_MECHANISM;
 import ru.rutoken.pkcs11jna.CK_TOKEN_INFO;
@@ -204,7 +209,7 @@ public class Token {
         mLabel = Utils.removeTrailingSpaces(tokenInfo.label);
         mModel = Utils.removeTrailingSpaces(tokenInfo.model);
         mSerialNumber = Utils.removeTrailingSpaces(tokenInfo.serialNumber);
-        int decSerial = Integer.parseInt(mSerialNumber, 16);
+        long decSerial = Long.parseLong(mSerialNumber, 16);
         String decSerialString = String.valueOf(decSerial);
         mShortDecSerialNumber = String.valueOf(decSerial % 100000);
         mHardwareVersion = String.format("%d.%d.%d.%d",
@@ -280,29 +285,16 @@ public class Token {
                 NativeLong keyHandle = cert.getPrivateKeyHandle(mPkcs11, mSession);
                 if (keyHandle == null) throw new KeyNotFoundException();
 
-                NativeLongByReference count =
-                        new NativeLongByReference(new NativeLong());
-
-                final byte[] oid = {
-                        0x06, 0x07, 0x2a, (byte) 0x85, 0x03, 0x02, 0x02, 0x1e, 0x01
-                };
-                ByteBuffer oidBuffer = ByteBuffer.allocateDirect(oid.length);
-                oidBuffer.put(oid);
-                CK_MECHANISM mechanism =
-                        new CK_MECHANISM(new NativeLong(RtPkcs11Constants.CKM_GOSTR3410_WITH_GOSTR3411),
-                                Native.getDirectBufferPointer(oidBuffer),
-                                new NativeLong(oid.length));
-                NativeLong rv = mPkcs11.C_SignInit(mSession, mechanism, keyHandle);
+                Pointer pptSignature = new Memory(Pointer.SIZE);
+                pptSignature.setPointer(0, null);
+                NativeLongByReference ulSignatureLen = new NativeLongByReference();
+                NativeLong rv = mPkcs11.C_EX_PKCS7Sign(mSession, data, new NativeLong(data.length), certificate,
+                        pptSignature, ulSignatureLen, keyHandle, null, new NativeLong(0), new NativeLong(0));
                 Pkcs11Exception.throwIfNotOk(rv);
 
-                rv = mPkcs11.C_Sign(mSession, data, new NativeLong(data.length), null, count);
-                Pkcs11Exception.throwIfNotOk(rv);
-
-                byte signature[] = new byte[count.getValue().intValue()];
-                rv = mPkcs11.C_Sign(mSession, data, new NativeLong(data.length), signature, count);
-                Pkcs11Exception.throwIfNotOk(rv);
-
-                return new Pkcs11Result(signature);
+                Pointer pbtSignature = pptSignature.getPointer(0);
+                byte[] cms = pbtSignature.getByteArray(0, ulSignatureLen.getValue().intValue());
+                return new Pkcs11Result(cms);
             }
         }.execute();
     }
