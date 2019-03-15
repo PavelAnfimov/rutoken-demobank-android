@@ -148,12 +148,8 @@ public class PaymentsActivity extends Pkcs11CallerActivity {
     private AlertDialog mProgressDialog;
 
     private String[] mPaymentTitles;
-    private String[][] mPaymentArray = null;
+    private String[][] mPaymentValuesArray = null;
     //
-
-    private static final byte[] mSignData = new byte[]{
-            0, 0, 0
-    };
 
     // Activity input
     protected NativeLong mSlotId = TokenManagerListener.NO_SLOT;
@@ -299,7 +295,7 @@ public class PaymentsActivity extends Pkcs11CallerActivity {
     @Override
     protected void manageLoginSucceed() {
         mLoginDialog.setLogonFinished();
-        sign(mToken, mCertificate, mSignData);
+        sign(mToken, mCertificate, mPaymentToSign.getBytes());
     }
 
     @Override
@@ -337,13 +333,13 @@ public class PaymentsActivity extends Pkcs11CallerActivity {
     private void createPayments() {
         Resources res = getResources();
         mPaymentTitles = res.getStringArray(R.array.payments_titles);
-        TypedArray ta = res.obtainTypedArray(R.array.payments);
+        TypedArray ta = res.obtainTypedArray(R.array.payments_values);
         int n = ta.length();
-        mPaymentArray = new String[n][];
+        mPaymentValuesArray = new String[n][];
         for (int i = 0; i < n; ++i) {
             int id = ta.getResourceId(i, 0);
             if (id > 0) {
-                mPaymentArray[i] = res.getStringArray(id);
+                mPaymentValuesArray[i] = res.getStringArray(id);
             } else {
                 // something wrong with the XML
             }
@@ -361,9 +357,9 @@ public class PaymentsActivity extends Pkcs11CallerActivity {
             }
         }
 
-        for (int i = 0; i < mPaymentArray.length; ++i) {
-            int price = Integer.valueOf(mPaymentArray[i][nPrice]);
-            Payment payment = new Payment(this, null, i, mPaymentArray[i][nRecipient], price);
+        for (int i = 0; i < mPaymentValuesArray.length; ++i) {
+            int price = Integer.valueOf(mPaymentValuesArray[i][nPrice]);
+            Payment payment = new Payment(this, null, i, mPaymentValuesArray[i][nRecipient], price);
             payment.setOnClickListener(view -> {
                 if (!Payment.class.isInstance(view)) return;
                 showOnePaymentInfo((Payment) view);
@@ -391,9 +387,10 @@ public class PaymentsActivity extends Pkcs11CallerActivity {
 
     protected void signAction() {
         mProgressDialog.show();
-        sign(mToken, mCertificate, mSignData);
+        sign(mToken, mCertificate, mPaymentToSign.getBytes());
     }
 
+    private String mPaymentToSign;
     protected String createFullPaymentHtml(int num) {
         StringBuilder result = new StringBuilder();
         DateFormat df = DateFormat.getDateInstance();
@@ -403,7 +400,7 @@ public class PaymentsActivity extends Pkcs11CallerActivity {
         result.append("<br/><br/>");
         for (int i = 0; i < mPaymentTitles.length; ++i) {
             result.append("<font color=#CCCCCC size=-1>").append(mPaymentTitles[i]).append("</font><br/>");
-            result.append("<font color=#000000 size=-1>").append(mPaymentArray[num][i]).append("</font><br/>");
+            result.append("<font color=#000000 size=-1>").append(mPaymentValuesArray[num][i]).append("</font><br/>");
         }
         return result.toString();
     }
@@ -422,6 +419,7 @@ public class PaymentsActivity extends Pkcs11CallerActivity {
         if (null == payment) return;
         int number = payment.getNum();
 
+        mPaymentToSign = createFullPaymentHtml(number);
         mInfoDialog.show(Html.fromHtml(createFullPaymentHtml(number)), payment.needAskPIN());
     }
 

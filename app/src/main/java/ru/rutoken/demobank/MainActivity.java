@@ -13,6 +13,7 @@ import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import androidx.appcompat.app.ActionBar;
+
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -20,28 +21,17 @@ import android.view.ViewGroup;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import org.spongycastle.asn1.x500.RDN;
-import org.spongycastle.asn1.x500.X500Name;
-import org.spongycastle.asn1.x500.style.BCStyle;
-import org.spongycastle.asn1.x500.style.IETFUtils;
-
 import java.util.Objects;
 
 import ru.rutoken.pkcs11caller.Token;
+import ru.rutoken.utils.PcscChecker;
 import ru.rutoken.utils.TokenModelRecognizer;
 
 public class MainActivity extends ManagedActivity {
-    // GUI
-    private TextView mInfoTextView;
-    private ProgressBar mTWBAProgressBar;
-
     // Vars
     private static final String ACTIVITY_CLASS_IDENTIFIER = TokenManagerListener.MAIN_ACTIVITY_IDENTIFIER;
-
-    public String getActivityClassIdentifier() {
-        return ACTIVITY_CLASS_IDENTIFIER;
-    }
-
+    // GUI
+    private TextView mInfoTextView;
     private final BroadcastReceiver mBluetoothStateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -60,6 +50,11 @@ public class MainActivity extends ManagedActivity {
             }
         }
     };
+    private ProgressBar mTWBAProgressBar;
+
+    public String getActivityClassIdentifier() {
+        return ACTIVITY_CLASS_IDENTIFIER;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,6 +68,12 @@ public class MainActivity extends ManagedActivity {
         IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         this.registerReceiver(mBluetoothStateReceiver, filter);
         TokenManagerListener.getInstance().init(getApplicationContext());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        PcscChecker.checkPcscInstallation(this);
     }
 
     @Override
@@ -129,15 +130,6 @@ public class MainActivity extends ManagedActivity {
         }
     }
 
-    private static String commonNameFromX500Name(X500Name name) {
-        String commonName = "";
-        RDN[] rdns = name.getRDNs(BCStyle.CN);
-        if (rdns == null || rdns.length == 0)
-            return commonName;
-        commonName = IETFUtils.valueToString(rdns[0].getFirst().getValue());
-        return commonName;
-    }
-
     public void updateScreen() {
         updateInfoLabel();
         updateProgressBar();
@@ -162,14 +154,18 @@ public class MainActivity extends ManagedActivity {
             certificateData += token.getShortDecSerialNumber();
             certificateData += "\n";
         }
-        if (token != null && !TokenManagerListener.getInstance().getCertificate().equals(TokenManagerListener.NO_CERTIFICATE)) {
-            certificateData += commonNameFromX500Name(token.getCertificate(TokenManagerListener.getInstance().getCertificate()).getSubject());
-            mInfoTextView.setText(certificateData);
-            mInfoTextView.setEnabled(true);
-        } else if (token != null) {
+        if (token != null && TokenManagerListener.getInstance().getCertificate().equals(TokenManagerListener.NO_CERTIFICATE)) {
             certificateData += getString(R.string.no_certificate);
             mInfoTextView.setText(certificateData);
             mInfoTextView.setEnabled(false);
+        } else if (token != null && TokenManagerListener.getInstance().getCertificate().equals(TokenManagerListener.MORE_THAN_ONE_CERTIFICATE)) {
+            certificateData += getString(R.string.more_than_one_certificate);
+            mInfoTextView.setText(certificateData);
+            mInfoTextView.setEnabled(false);
+        } else if (token != null) {
+            certificateData += Utils.commonNameFromX500Name(token.getCertificate(TokenManagerListener.getInstance().getCertificate()).getSubject());
+            mInfoTextView.setText(certificateData);
+            mInfoTextView.setEnabled(true);
         } else if (TokenManagerListener.getInstance().shallWaitForToken()) {
             certificateData = String.format(getString(R.string.wait_token),
                     TokenModelRecognizer.getInstance(this).marketingNameForPkcs11Name(TokenManagerListener.getInstance().getWaitToken().getModel())
