@@ -33,7 +33,7 @@ class EventHandler extends Thread {
             NativeLong rv;
 
             CK_C_INITIALIZE_ARGS initializeArgs = new CK_C_INITIALIZE_ARGS(null, null,
-                    null, null, new NativeLong(0), null);
+                    null, null, new NativeLong(Pkcs11Constants.CKF_OS_LOCKING_OK), null);
             rv = RtPkcs11Library.getInstance().C_Initialize(initializeArgs);
             Pkcs11Exception.throwIfNotOk(rv);
 
