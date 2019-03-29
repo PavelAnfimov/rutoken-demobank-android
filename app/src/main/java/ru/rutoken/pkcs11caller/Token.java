@@ -5,11 +5,11 @@
 
 package ru.rutoken.pkcs11caller;
 
-import com.sun.jna.Native;
 import com.sun.jna.Memory;
 import com.sun.jna.NativeLong;
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.NativeLongByReference;
+import com.sun.jna.ptr.PointerByReference;
 
 import org.spongycastle.asn1.x509.X509Name;
 
@@ -22,9 +22,10 @@ import java.util.Set;
 
 import ru.rutoken.demobank.TokenManagerListener;
 import ru.rutoken.pkcs11jna.CK_ATTRIBUTE;
-import ru.rutoken.pkcs11jna.CK_MECHANISM;
 import ru.rutoken.pkcs11jna.CK_TOKEN_INFO;
 import ru.rutoken.pkcs11jna.CK_TOKEN_INFO_EXTENDED;
+import ru.rutoken.pkcs11jna.CK_VENDOR_BUFFER;
+import ru.rutoken.pkcs11jna.CK_VENDOR_X509_STORE;
 import ru.rutoken.pkcs11jna.Pkcs11Constants;
 import ru.rutoken.pkcs11jna.RtPkcs11;
 import ru.rutoken.pkcs11jna.RtPkcs11Constants;
@@ -289,11 +290,57 @@ public class Token {
                 pptSignature.setPointer(0, null);
                 NativeLongByReference ulSignatureLen = new NativeLongByReference();
                 NativeLong rv = mPkcs11.C_EX_PKCS7Sign(mSession, data, new NativeLong(data.length), certificate,
-                        pptSignature, ulSignatureLen, keyHandle, null, new NativeLong(0), new NativeLong(0));
+                        pptSignature, ulSignatureLen, keyHandle, null, new NativeLong(0), new NativeLong(RtPkcs11Constants.PKCS7_DETACHED_SIGNATURE));
                 Pkcs11Exception.throwIfNotOk(rv);
 
                 Pointer pbtSignature = pptSignature.getPointer(0);
                 byte[] cms = pbtSignature.getByteArray(0, ulSignatureLen.getValue().intValue());
+
+                // Проверка открепленной CMS
+                // Инициализировать операцию проверки подписи
+                CK_VENDOR_X509_STORE store = new CK_VENDOR_X509_STORE( new CK_VENDOR_BUFFER[1], // массив доверенных сертификатов
+                        new NativeLong(0), // количество доверенных сертификатов в массиве
+                        new CK_VENDOR_BUFFER[1], // массив, содержащий сертификаты для проверки подписи
+                        new NativeLong(0), // количество сертификатов в цепочке сертификатов
+                        new CK_VENDOR_BUFFER[1], // массив списков отзыва сертификатов
+                        new NativeLong(0)  // количество списков отзыва сертификатов в массиве
+                );
+
+                rv = mPkcs11.C_EX_PKCS7VerifyInit(mSession, cms, new NativeLong(cms.length),
+                        store, new NativeLong(RtPkcs11Constants.OPTIONAL_CRL_CHECK), new NativeLong(0));
+                Pkcs11Exception.throwIfNotOk(rv);
+
+                /* Проверить подпись attached подпись
+                Для проверки прикрипленной подписи надо позвать только 1 функцию C_EX_PKCS7Verify
+
+                Pointer signedData = new Memory(cms.length);
+                signedData.write(0, cms, 0, cms.length);
+                NativeLong signedDataSize = new NativeLong(((Memory) signedData).size());
+                rv = mPkcs11.C_EX_PKCS7Verify(mSession, new PointerByReference(signedData), new NativeLongByReference(signedDataSize),
+                        new PointerByReference(Pointer.NULL), new NativeLongByReference(new NativeLong(0)));*/
+                /* CKR_CERT_CHAIN_NOT_VERIFIED значит, что подпись верна, но
+                    - Проверка была без корневого сертификата (подходит для внутреннего документооборота).
+                    - Истек либо не наступил срок действия сертификата.
+                    - Цепочка сертификатов основана на недоверенном корневом сертификате.
+                   CKR_ARGUMENTS_BAD -- signedData не в DER формате
+                   CKR_SIGNATURE_INVALID -- подпись не верна  */
+
+                // Проверить подпись detached (открепленной) подписи
+                //Добавить данные, для которых была сформирована подпись
+                rv = mPkcs11.C_EX_PKCS7VerifyUpdate(mSession, data, new NativeLong(data.length));
+                Pkcs11Exception.throwIfNotOk(rv);
+
+                // Проверить полпись
+                rv = mPkcs11.C_EX_PKCS7VerifyFinal(mSession, new PointerByReference(Pointer.NULL), new NativeLongByReference(new NativeLong(0)));
+                /* CKR_CERT_CHAIN_NOT_VERIFIED значит, что подпись верна, но
+                    - Проверка была без корневого сертификата (подходит для внутреннего документооборота).
+                    - Истек либо не наступил срок действия сертификата.
+                    - Цепочка сертификатов основана на недоверенном корневом сертификате.
+                   CKR_ARGUMENTS_BAD -- signedData не в DER формате
+                   CKR_SIGNATURE_INVALID -- подпись не верна  */
+                if(!rv.equals(new NativeLong(RtPkcs11Constants.CKR_CERT_CHAIN_NOT_VERIFIED))) {
+                    Pkcs11Exception.throwIfNotOk(rv);
+                }
                 return new Pkcs11Result(cms);
             }
         }.execute();
