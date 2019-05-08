@@ -280,19 +280,11 @@ public class TokenManager {
             return;
         RtPkcs11Library.getInstance().C_Finalize(null);
 
-        try {
-            mEventHandler.join();
-        } catch (InterruptedException e) {
-            Log.e(getClass().getName(), "Interrupted exception");
+        mEventHandlerThread.interrupt();
+        for (TokenInfoLoader loader : tilThreads.values()) {
+            loader.interrupt();
         }
 
-        for (TokenInfoLoader loader : tilThreads.values()) {
-            try {
-                loader.join();
-            } catch (InterruptedException e) {
-                Log.e(getClass().getName(), "Interrupted exception");
-            }
-        }
 
         for (NativeLong slotId : mTokens.keySet()) {
             sendTR(slotId);
