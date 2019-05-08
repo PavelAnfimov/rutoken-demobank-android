@@ -54,7 +54,7 @@ class EventHandler extends Thread {
             mHandler.post(new EventRunnable(EventType.EVENT_HANDLER_FAILED, new NativeLong(-1)));
         }
 
-        while (true) {
+        while (!isInterrupted()) {
             NativeLongByReference id = new NativeLongByReference();
             NativeLong rv;
 
